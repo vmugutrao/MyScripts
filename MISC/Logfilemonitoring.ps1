@@ -46,8 +46,14 @@ foreach($S in $Services)
 }
 
 #Sending Email if any problem
+$style = "<style>BODY{font-family: Cambria; font-size: 10pt;}"
+$style = $style + "TABLE{border: 1px solid black; border-collapse: collapse;}"
+$style = $style + "TH{border: 2px solid black; background: #0099ff; padding: 6px; }"
+$style = $style + "TD{border: 1px solid black; padding: 6px; }"
+$style = $style + "</style>"
+$Body = $Output | ConvertTo-HTML -head $style -body "<H2>Service & Log monitoring</H2>"
 if(($Output.Service_Status -like 'Not Running*') -or ($Output.LogFile_Status -contains 'Not Okay'))
     {
     Write-Host 'Sending email'
-    Send-MailMessage -To $To -From $From -Subject $Subject -Body ($Output | Out-String) -BodyAsHtml -SmtpServer $SMTP -Priority High
+    Send-MailMessage -To $To -From $From -Subject $Subject -Body ($Body | Out-String) -BodyAsHtml -SmtpServer $SMTP -Priority High
 }
