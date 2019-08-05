@@ -1,12 +1,19 @@
 #Script to monitor services and corresponding log file.
 
+#Define Variables
+$To = 'to@abc.com'
+$From = 'from@abc.com'
+$Subject = "Service monitoring On $(Get-date -Format dd-MMM-yy )"
+$SMTP = 'mail.abc.com'
+
 $Services = $null
 $Services = (@{ServiceName="server";LogPath="c:\temp\server.txt"},`
 @{ServiceName="Dnscache";LogPath="c:\temp\Dnscache.txt"})
 $Services = $Services | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 $Output = @()
-$Properties = @{ServiceName='';Service_Status='';LogFile_Status=''} 
+$Properties = @{ServiceName='';Service_Status='';LogFile_Status=''}
 
+#Validating services and log fine
 foreach($S in $Services)
     {
     $obj = $null
@@ -38,7 +45,9 @@ foreach($S in $Services)
     $Output += $obj
 }
 
-if(($Output.Service_Status -contains '*Not*') -or ($Output.LogFile_Status -contains 'Not'))
+#Sending Email if any problem
+if(($Output.Service_Status -like 'Not Running*') -or ($Output.LogFile_Status -contains 'Not Okay'))
     {
     Write-Host 'Sending email'
+    Send-MailMessage -To $To -From $From -Subject $Subject -Body ($Output | Out-String) -BodyAsHtml -SmtpServer $SMTP -Priority High
 }
