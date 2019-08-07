@@ -3,8 +3,8 @@
 #Define Variables
 $To = 'to@abc.com'
 $From = 'from@abc.com'
-$Subject = "Service monitoring On $(Get-date -Format dd-MMM-yy )"
 $SMTP = 'mail.abc.com'
+$Subject = "Service monitoring On $(Get-date -Format dd-MMM-yy )"
 
 $Services = $null
 $Services = (@{ServiceName="server";LogPath="c:\temp\server.txt"},`
@@ -16,6 +16,8 @@ $Properties = @{ServiceName='';Service_Status='';LogFile_Status=''}
 #Validating services and log fine
 foreach($S in $Services)
     {
+    $Lastlog = $null
+    $Current = $null
     $obj = $null
     $obj = New-Object -TypeName psobject -Property $Properties
     $obj.ServiceName = $($S.ServiceName) 
@@ -25,8 +27,11 @@ foreach($S in $Services)
         {
         Write-Verbose "$($S.ServiceName) is running"
         $obj.Service_Status = 'Running'
-        $modifycheck = Get-ChildItem $($S.LogPath)
-        If($modifycheck.LastWriteTime -ge (Get-Date).AddMinutes('-10'))
+        $modifycheck = Get-ChildItem $($S.LogPath) -ErrorAction SilentlyContinue
+        $Lastlog = (Get-Content $($S.LogPath) -ErrorAction SilentlyContinue | select -Last 1).split('.')[0]
+        $Current = (Get-Date).AddMinutes('-10')
+        
+        If(($modifycheck.LastWriteTime -ge $Current.DateTime) -and ($Lastlog  -ge $Current.ToString("yyyy-MM-dd HH:MM:ss")))
             {
             Write-Verbose "Log file for $($S.ServiceName) is working"
             $obj.LogFile_Status = 'Okay'
@@ -37,7 +42,8 @@ foreach($S in $Services)
             $obj.LogFile_Status = 'Not Okay'
         }
     }
-    else {
+    else 
+        {
          Write-Verbose "$($S.ServiceName) is not running"
          $obj.Service_Status = 'Not Running'
          $obj.LogFile_Status = 'Not Okay'
