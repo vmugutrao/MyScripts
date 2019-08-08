@@ -11,7 +11,7 @@ $Services = (@{ServiceName="server";LogPath="c:\temp\server.txt"},`
 @{ServiceName="Dnscache";LogPath="c:\temp\Dnscache.txt"})
 $Services = $Services | ForEach-Object { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru }
 $Output = @()
-$Properties = @{ServiceName='';Service_Status='';LogFile_Status=''}
+$Properties = @{ServiceName='';Service_Status='';LogFile_Status='';LastLogStamp='NA'}
 
 #Validating services and log fine
 foreach($S in $Services)
@@ -35,6 +35,7 @@ foreach($S in $Services)
             {
             Write-Verbose "Log file for $($S.ServiceName) is working"
             $obj.LogFile_Status = 'Okay'
+            $obj.LastLogStamp = $Lastlog
         }
         else 
             {
