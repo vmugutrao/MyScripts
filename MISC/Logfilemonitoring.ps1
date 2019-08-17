@@ -13,7 +13,6 @@ $Services = $Services | ForEach-Object { New-Object object | Add-Member -NotePro
 $Output = @()
 $Properties = @{ServiceName='';Service_Status='';LogFile_Status='';LastLogStamp='NA'}
 
-
 #Validating services and log fine
 foreach($S in $Services)
     {
@@ -24,6 +23,8 @@ foreach($S in $Services)
     $obj.ServiceName = $($S.ServiceName) 
     $SrvCheck = $null
     $SrvCheck = Get-Service $($S.ServiceName) -ErrorAction SilentlyContinue
+    if(!(Test-Path "$path\"$S.Logpath""))
+        { Set-Content "$path\"$S.Logpath"" }
     if($SrvCheck.Status -eq 'Running')
         {
         Write-Verbose "$($S.ServiceName) is running"
@@ -36,6 +37,7 @@ foreach($S in $Services)
             Write-Verbose "Log file for $($S.ServiceName) is working"
             $obj.LogFile_Status = 'Okay'
             $obj.LastLogStamp = $Lastlog
+            Add-Content "$path\"$S.Logpath"" Good -Force
         }
         else 
             {
