@@ -125,7 +125,7 @@ if(($Output.Service_Status -like 'Not Running*') -or ($Output.LogFile_Status -li
     Write-Host 'Sending email'
     if($Remindercount -gt 0)
         {
-        Send-MailMessage -To $To -From $From -Credintia $Cred -Subject "$Subject - Reminder$([int]$Remindercount)" -Body ($Body | Out-String) -BodyAsHtml -SmtpServer $SMTP -Priority High
+        Send-MailMessage -To $To -From $From -Credintial $Cred -Subject "$Subject - Reminder$([int]$Remindercount)" -Body ($Body | Out-String) -BodyAsHtml -SmtpServer $SMTP -Priority High
         Set-Content $Remiderfile -Value "$([int]$Remindercount+1)" -Confirm:$false -Force
         
         }
