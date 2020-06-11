@@ -1,0 +1,101 @@
+#Checking modules
+If(!(Get-Module AzureRM))
+    {
+    Write-Host 'Azure module not found on this machine, installing now ..' -f Yellow
+    #Install-Module AzureRM -Scope CurrentUser -Force -ErrorAction Stop
+    #Import-Module AzureRM -Scope Local -Force -ErrorAction Stop
+    }
+
+#Login to Azure portal
+Do {
+    $Content = Get-AzureRmContext
+    if($Null -eq $Content)
+        { $AZSession = Login-AzureRmAccount }
+    }Until($Null -ne $Content)
+
+#Main code
+$AllVMs = (Get-AzureRmVM).Name
+Do
+    {
+    $SourceVM = Read-Host 'Enter source VM for clone'
+    If($AllVMs -notcontains $SourceVM)
+        {
+        Write-Host "Unable to find $($SourceVM) in Azure cloud" -ForegroundColor Red    
+    }
+}Until($AllVMs -contains $SourceVM)
+
+Do
+    {
+    $NewVM = Read-Host 'Enter name for new VM'
+    If($AllVMs -contains $NewVM)
+        {
+        Write-Host "$($NewVM) already present, Please provide unique name" -ForegroundColor Red    
+    }
+}Until($AllVMs -notcontains $NewVM)
+
+$VMInfo = Get-AzureRmResource -ResourceType Microsoft.Compute/virtualMachines | Where-Object {$_.Name -eq $SourceVM}
+$ResourceGroup = $VMInfo.ResourceGroupName
+$VMLocation = $VMInfo.Location
+$vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $SourceVM
+$virtualMachineSize = Get-AzureRmVMSize -ResourceGroupName $ResourceGroup -VMName $SourceVM | Out-GridView -Title 'Select Valid size' -PassThru
+
+Write-host "Select network for new VM" -ForegroundColor Yellow 
+$virtualNetworkRG = Get-AzureRmResourceGroup  | Out-GridView -Title 'Select valid network resource group for deployment' -PassThru
+$vnet = Get-AzureRmVirtualNetwork -ResourceGroupName $virtualNetworkRG.ResourceGroupName -WarningAction SilentlyContinue | Out-GridView -Title 'Select valid Network for deployment' -PassThru
+
+
+#Taking snapshot and making OS disk from it
+Write-Host "Taking snapshot of $SourceVM..." -ForegroundColor Yellow 
+$snapshot =  New-AzureRmSnapshotConfig -SourceUri $vm.StorageProfile.OsDisk.ManagedDisk.Id -Location $VMlocation -CreateOption copy
+$Null = New-AzureRmSnapshot -Snapshot $snapshot  -SnapshotName "$($SourceVM)_Snap" -ResourceGroupName $ResourceGroup
+$FetchSnap = Get-AzureRmSnapshot -ResourceGroupName $ResourceGroup -SnapshotName "$($SourceVM)_Snap"
+
+Write-Host 'Creating disk from snapshot...' -ForegroundColor Yellow
+$diskConfig = New-AzureRmDiskConfig -SkuName 'Premium_LRS' -Location $FetchSnap.Location -SourceResourceId $FetchSnap.Id -CreateOption Copy 
+$disk = New-AzureRmDisk -Disk $diskConfig -ResourceGroupName $ResourceGroup -DiskName "$($NewVM)_OSDisk"
+If($disk.ProvisioningState -ne 'Succeeded')
+    {
+    Write-Host "Failed to create OS disk, Script will be haulted" -ForegroundColor Red
+    Break    
+}
+
+
+#Create the virtual machine with Managed Disk
+$VirtualMachine = New-AzureRmVMConfig -VMName $NewVM -VMSize $($virtualMachineSize.Name) 
+$VirtualMachine = Set-AzureRmVMOSDisk -VM $VirtualMachine -ManagedDiskId $disk.Id -CreateOption Attach -Windows
+# Create NIC in the first subnet of the virtual network
+$nic = New-AzureRmNetworkInterface -Name ($NewVM.ToLower()+'_nic') -ResourceGroupName $ResourceGroup -Location $snapshot.Location -SubnetId $vnet.Subnets[0].Id
+$VirtualMachine = Add-AzureRmVMNetworkInterface -VM $VirtualMachine -Id $nic.ID
+Write-Host "Cloning $SourceVM to $NewVM ..." -ForegroundColor Yellow
+$VMDeploy = New-AzureRmVM -VM $VirtualMachine -ResourceGroupName $ResourceGroup -Location $snapshot.Location
+If($VMDeploy.IsSuccessStatusCode -eq 'True')
+    {
+    Write-Host "VM has been cloned, checking for data disks..." -ForegroundColor Green
+    $Alldatadisk = $vm.StorageProfile.DataDisks
+    if($Alldatadisk.Count -gt 0)
+        {
+        $i = 0
+        Write-Host 'Data disk found on source VM, copyin them'
+        foreach($Datadisk in $Alldatadisk)
+            {
+            $i = $i+1
+            $DiskName = "$($NewVM)_Datadisk$($i)"
+            $diskConfig = New-AzureRmDiskConfig  -SkuName Premium_LRS -SourceResourceId $Datadisk.ManagedDisk.Id -Location $VMLocation -CreateOption Copy
+            #Create a new managed disk in the target subscription and resource group
+            $Datadiskstatus = New-AzureRmDisk -Disk $diskConfig -DiskName $DiskName -ResourceGroupName $ResourceGroup 
+            If($Datadiskstatus.ProvisioningState -eq 'Succeeded')
+                {
+                Write-Host "$DiskName has been created from $($Datadisk.Name), attaching to VM.." -ForegroundColor Green
+                $disk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $DiskName
+                $vm = Get-AzureRmVM -Name $NewVM -ResourceGroupName $ResourceGroup
+                $vm = Add-AzureRmVMDataDisk -VM $vm -Name $DiskName -CreateOption Attach -ManagedDiskId $disk.Id -Lun $i
+                Update-AzureRmVM -VM $vm -ResourceGroupName $ResourceGroup
+            }
+            Else
+                {
+                Write-Host "Failed to copy datadisk $($Datadisk.Name)... " -ForegroundColor Red        
+            }
+        }    
+    }
+}
+
